@@ -1,0 +1,63 @@
+pipeline {
+    agent {
+        label {
+            label "built-in"
+            customWorkspace "/opt/clone"
+        }
+    }
+    environment {
+        registry = 'thulasinaidu/springboot-demoeksf:v1'
+        registryCredentials = 'docker-credentials'
+        dockerimage=''
+    }
+    stages {
+        stage('scm') { 
+            steps{
+                checkout scmGit(branches: [[name: '*/master']], extensions: [], userRemoteConfigs: [[url: 'https://veerapallithulasikumar@bitbucket.org/veerapallithulasikumar/springbootci_cd.git']])
+                
+            }
+        }
+        stage('build artifact') {
+            steps {
+                sh 'mvn clean install'
+            }
+    }
+        stage('build image') {
+        steps {
+            script {
+            dockerImage = docker.build registry
+            
+        }
+    }
+    }   
+        stage ('docker push') {
+        steps {
+            script {
+                docker.withRegistry('',registryCredentials) {
+                    dockerImage.push()
+                }
+            }
+        }
+        }
+        stage("Connect to k8s cluster"){
+            steps{
+                sh "aws eks update-kubeconfig --region us-east-1 --name eksdemo"
+            }
+        }
+        stage('Deploy in k8s') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'kubernetes-credential', variable: 'KUBECONFIG')]) {
+                        sh '''
+                            cd /opt/clone
+                            cat deployment.yml
+                            cat service.yml
+                            sudo -s kubectl apply -f deployment.yml
+                            sudo -s kubectl apply -f service.yml
+                        '''
+                    }
+                }
+            }
+        }
+}
+}
